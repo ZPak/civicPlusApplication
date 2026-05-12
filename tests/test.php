@@ -298,5 +298,76 @@ test('slug column has a unique constraint', function () {
     assert_true($threw, 'inserting duplicate slug should throw');
 });
 
+// --- Search ---
+
+test('substring search returns matching documents', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Annual Events Report', 'Body']);
+    $stmt->execute(['Company Events 2026', 'Body']);
+    $stmt->execute(['Unrelated Document', 'Body']);
+
+    $stmt = db()->prepare("
+        SELECT title FROM documents WHERE title LIKE ? ORDER BY title ASC
+    ");
+    $stmt->execute(['%events%']);
+    $rows = $stmt->fetchAll();
+    assert_true(count($rows) === 2, 'expected 2 matching documents, got ' . count($rows));
+    assert_true($rows[0]['title'] === 'Annual Events Report', 'unexpected first result: ' . $rows[0]['title']);
+    assert_true($rows[1]['title'] === 'Company Events 2026', 'unexpected second result: ' . $rows[1]['title']);
+});
+
+test('search is case-insensitive', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Uppercase SEARCH Test', 'Body']);
+
+    $stmt = db()->prepare("SELECT title FROM documents WHERE title LIKE ?");
+    $stmt->execute(['%search%']);
+    $rows = $stmt->fetchAll();
+    assert_true(count($rows) >= 1, 'expected at least one result for case-insensitive match');
+});
+
+test('search returns no results for non-matching query', function () {
+    $stmt = db()->prepare("SELECT title FROM documents WHERE title LIKE ?");
+    $stmt->execute(['%zzznomatchzzz%']);
+    $rows = $stmt->fetchAll();
+    assert_true(count($rows) === 0, 'expected no results for non-matching query');
+});
+
+test('results are sorted alphabetically ascending', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Zebra Document', 'Body']);
+    $stmt->execute(['Alpha Document', 'Body']);
+    $stmt->execute(['Mango Document', 'Body']);
+
+    $stmt = db()->prepare("SELECT title FROM documents WHERE title LIKE ? ORDER BY title ASC");
+    $stmt->execute(['%document%']);
+    $rows = $stmt->fetchAll();
+    $titles = array_column($rows, 'title');
+    $sorted = $titles;
+    sort($sorted);
+    assert_true($titles === $sorted, 'results should be sorted alphabetically ascending');
+});
+
+test('pagination returns correct subset of results', function () {
+    // Insert enough documents to span multiple pages
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    for ($i = 1; $i <= 12; $i++) {
+        $stmt->execute(["Paginated Doc {$i}", 'Body']);
+    }
+
+    $per_page = 10;
+    $stmt = db()->prepare("
+        SELECT title FROM documents WHERE title LIKE ? ORDER BY title ASC LIMIT ? OFFSET ?
+    ");
+    $stmt->execute(['%paginated doc%', $per_page, 0]);
+    $page1 = $stmt->fetchAll();
+    $stmt->execute(['%paginated doc%', $per_page, $per_page]);
+    $page2 = $stmt->fetchAll();
+
+    assert_true(count($page1) === 10, 'page 1 should have 10 results');
+    assert_true(count($page2) === 2, 'page 2 should have 2 results');
+    assert_true($page1[0]['title'] !== $page2[0]['title'], 'pages should not overlap');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);

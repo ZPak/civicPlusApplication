@@ -30,12 +30,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$docs = db()->query('
+$search   = trim($_GET['q'] ?? '');
+$page     = max(1, (int) ($_GET['page'] ?? 1));
+$per_page = 10;
+$offset   = ($page - 1) * $per_page;
+$like     = '%' . $search . '%';
+
+$count_stmt = db()->prepare('
+    SELECT COUNT(*) AS total
+    FROM documents d
+    WHERE d.title LIKE ?
+');
+$count_stmt->execute([$like]);
+$total       = (int) $count_stmt->fetch()['total'];
+$total_pages = max(1, (int) ceil($total / $per_page));
+$page        = min($page, $total_pages);
+
+$stmt = db()->prepare('
     SELECT d.*, s.name AS creator_name
     FROM documents d
     JOIN staff s ON s.id = d.created_by
-    ORDER BY d.created_at DESC
-')->fetchAll();
+    WHERE d.title LIKE ?
+    ORDER BY d.title ASC
+    LIMIT ? OFFSET ?
+');
+$stmt->execute([$like, $per_page, $offset]);
+$docs = $stmt->fetchAll();
 
 render_header('Admin', $staff);
 ?>
@@ -82,9 +102,22 @@ render_header('Admin', $staff);
 
 <section class="card">
     <h2 class="card-title">Documents</h2>
+
+    <form method="get" class="search-form">
+        <input type="text" name="q" value="<?= h($search) ?>" placeholder="Search by title…">
+        <button type="submit" class="btn">Search</button>
+        <?php if ($search !== ''): ?>
+            <a href="/admin.php" class="btn-link">Clear</a>
+        <?php endif ?>
+    </form>
+
     <?php if (empty($docs)): ?>
-        <p class="empty">No documents yet.</p>
+        <p class="empty"><?= $search !== '' ? 'No documents matched "' . h($search) . '".' : 'No documents yet.' ?></p>
     <?php else: ?>
+        <p class="pagination-summary">
+            Showing <?= $offset + 1 ?>–<?= min($offset + $per_page, $total) ?> of <?= $total ?> document<?= $total !== 1 ? 's' : '' ?>
+            <?= $search !== '' ? ' matching "' . h($search) . '"' : '' ?>
+        </p>
         <table class="data">
             <thead>
                 <tr>
@@ -114,6 +147,18 @@ render_header('Admin', $staff);
                 <?php endforeach ?>
             </tbody>
         </table>
+
+        <?php if ($total_pages > 1): ?>
+            <div class="pagination">
+                <?php if ($page > 1): ?>
+                    <a href="/admin.php?<?= http_build_query(array_filter(['q' => $search, 'page' => $page - 1])) ?>" class="btn-link">← Previous</a>
+                <?php endif ?>
+                <span>Page <?= $page ?> of <?= $total_pages ?></span>
+                <?php if ($page < $total_pages): ?>
+                    <a href="/admin.php?<?= http_build_query(array_filter(['q' => $search, 'page' => $page + 1])) ?>" class="btn-link">Next →</a>
+                <?php endif ?>
+            </div>
+        <?php endif ?>
     <?php endif ?>
 </section>
 
