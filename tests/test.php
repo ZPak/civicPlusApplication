@@ -1,5 +1,7 @@
 <?php
 
+putenv('DB_PATH=' . __DIR__ . '/../db.test.sqlite');
+
 require __DIR__ . '/../lib/bootstrap.php';
 
 system('php ' . escapeshellarg(__DIR__ . '/../seed.php') . ' > /dev/null', $rc);
@@ -226,12 +228,19 @@ test('editing a document is recorded in audit_log', function () {
 test('generate_slug produces a non-empty string with a hyphenated suffix', function () {
     $slug = generate_slug('Welcome Packet');
     assert_true($slug !== '', 'slug should not be empty');
-    assert_true((bool) preg_match('/^[a-z0-9-]+-[a-z0-9]{4}$/', $slug), 'slug should match pattern: ' . $slug);
+    assert_true((bool) preg_match('/^[a-z0-9][a-z0-9-]+-[a-z0-9]{4,}$/', $slug), 'slug should match pattern: ' . $slug);
+    assert_true(strlen($slug) >= SLUG_MIN_LENGTH, 'slug should meet minimum length: ' . $slug);
+});
+
+test('generate_slug meets minimum length even for short titles', function () {
+    $slug = generate_slug('AI');
+    assert_true(strlen($slug) >= SLUG_MIN_LENGTH, 'short title slug should still meet minimum length: ' . $slug);
 });
 
 test('generate_slug handles special characters and extra whitespace', function () {
     $slug = generate_slug('  Hello, World! (2026) ');
-    assert_true((bool) preg_match('/^[a-z0-9-]+-[a-z0-9]{4}$/', $slug), 'slug should only contain lowercase alphanumerics and hyphens: ' . $slug);
+    assert_true((bool) preg_match('/^[a-z0-9][a-z0-9-]+-[a-z0-9]{4,}$/', $slug), 'slug should only contain lowercase alphanumerics and hyphens: ' . $slug);
+    assert_true(strlen($slug) >= SLUG_MIN_LENGTH, 'slug should meet minimum length: ' . $slug);
 });
 
 test('share created with a slug resolves via ?slug= parameter', function () {

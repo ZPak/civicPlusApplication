@@ -2,7 +2,7 @@
 
 require __DIR__ . '/lib/bootstrap.php';
 
-$dbPath = __DIR__ . '/db.sqlite';
+$dbPath = getenv('DB_PATH') ?: __DIR__ . '/db.sqlite';
 if (file_exists($dbPath)) {
     unlink($dbPath);
 }

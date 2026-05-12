@@ -5,7 +5,7 @@ date_default_timezone_set('America/Chicago');
 function db(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $path = __DIR__ . '/../db.sqlite';
+        $path = getenv('DB_PATH') ?: __DIR__ . '/../db.sqlite';
         $pdo = new PDO('sqlite:' . $path);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -43,15 +43,20 @@ function random_token(int $bytes = 16): string {
     return bin2hex(random_bytes($bytes));
 }
 
+define('SLUG_MIN_LENGTH', 12);
+
 function generate_slug(string $title): string {
     $base = strtolower(trim($title));
     $base = preg_replace('/[^a-z0-9]+/', '-', $base);
     $base = trim($base, '-');
     $base = rtrim(substr($base, 0, 30), '-');
 
+    // Suffix is at least 4 chars, extended so the full slug meets SLUG_MIN_LENGTH.
+    // A longer suffix on short titles increases brute-force cost.
+    $suffix_len = max(4, SLUG_MIN_LENGTH - strlen($base) - 1); // -1 for the separating hyphen
     $chars = '0123456789abcdefghijklmnopqrstuvwxyz';
     $suffix = '';
-    for ($i = 0; $i < 4; $i++) {
+    for ($i = 0; $i < $suffix_len; $i++) {
         $suffix .= $chars[random_int(0, strlen($chars) - 1)];
     }
     return $base . '-' . $suffix;

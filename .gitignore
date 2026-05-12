@@ -1,4 +1,5 @@
 db.sqlite
+db.test.sqlite
 *.log
 .DS_Store
 .idea/
