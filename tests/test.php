@@ -44,5 +44,63 @@ test('seeded share link resolves to the seeded document', function () {
     assert_true($row['title'] === 'Welcome Packet', 'unexpected title: ' . var_export($row['title'], true));
 });
 
+// --- Scheduled publishing ---
+
+test('document with null publish_at is immediately available', function () {
+    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = 1');
+    $stmt->execute();
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'expected seeded document');
+    assert_true($row['publish_at'] === null, 'seeded document should have no publish_at');
+});
+
+test('document with future publish_at is not yet available via share token', function () {
+    $stmt = db()->prepare('
+        INSERT INTO documents (title, body, created_by, publish_at)
+        VALUES (?, ?, 1, ?)
+    ');
+    $stmt->execute(['Future Doc', 'Body', '2099-01-01 00:00:00']);
+    $docId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, $token, 'test@example.com']);
+
+    $stmt = db()->prepare('
+        SELECT d.publish_at
+        FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.token = ?
+    ');
+    $stmt->execute([$token]);
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'share token should resolve');
+    assert_true($row['publish_at'] > date('Y-m-d H:i:s'), 'publish_at should be in the future');
+});
+
+test('document with past publish_at is available via share token', function () {
+    $stmt = db()->prepare('
+        INSERT INTO documents (title, body, created_by, publish_at)
+        VALUES (?, ?, 1, ?)
+    ');
+    $stmt->execute(['Past Doc', 'Body', '2020-01-01 00:00:00']);
+    $docId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, $token, 'test@example.com']);
+
+    $stmt = db()->prepare('
+        SELECT d.publish_at
+        FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.token = ?
+    ');
+    $stmt->execute([$token]);
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'share token should resolve');
+    assert_true($row['publish_at'] <= date('Y-m-d H:i:s'), 'publish_at should be in the past');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);
