@@ -66,7 +66,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'publish_at' => $publish_at,
                 'show_publish_date' => $show_publish_date,
             ]);
-            header('Location: /admin.php?updated=' . $doc['id']);
+            flash('Document #' . $doc['id'] . ' updated.');
+            header('Location: /admin.php');
             exit;
         }
     }

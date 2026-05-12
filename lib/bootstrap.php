@@ -2,6 +2,8 @@
 
 date_default_timezone_set('America/Chicago');
 
+session_start();
+
 function db(): PDO {
     static $pdo = null;
     if ($pdo === null) {
@@ -47,4 +49,15 @@ define('SLUG_MIN_LENGTH', 8);
 
 function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+
+function flash(string $message, string $type = 'success'): void {
+    $_SESSION['flash'] = ['message' => $message, 'type' => $type];
+}
+
+function get_flash(): ?array {
+    if (!isset($_SESSION['flash'])) return null;
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+    return $flash;
 }

@@ -33,7 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$error) {
             $docId = (int) db()->lastInsertId();
             audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at, 'show_publish_date' => $show_publish_date]);
-            header('Location: /admin.php?created=' . $docId);
+            flash('Document #' . $docId . ' created.');
+            header('Location: /admin.php');
             exit;
         }
     }
@@ -71,14 +72,6 @@ render_header('Admin', $staff);
 
 <h1 class="page-title">Admin</h1>
 <p class="page-subtitle">Create documents and generate share links for recipients.</p>
-
-<?php if (!empty($_GET['created'])): ?>
-    <div class="banner banner-success">Document #<?= (int) $_GET['created'] ?> created.</div>
-<?php endif ?>
-
-<?php if (!empty($_GET['updated'])): ?>
-    <div class="banner banner-success">Document #<?= (int) $_GET['updated'] ?> updated.</div>
-<?php endif ?>
 
 <?php if ($error): ?>
     <div class="banner banner-error"><?= h($error) ?></div>

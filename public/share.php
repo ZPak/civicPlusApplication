@@ -35,8 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'revok
             'document_id' => $doc['id'],
             'recipient_email' => $share['recipient_email'],
         ]);
+        flash('Share link revoked.');
     }
-    header('Location: /share.php?doc=' . $doc['id'] . '&revoked=1');
+    header('Location: /share.php?doc=' . $doc['id']);
     exit;
 }
 
@@ -98,10 +99,6 @@ render_header('Share · ' . $doc['title'], $staff);
 
 <h1 class="page-title">Share "<?= h($doc['title']) ?>"</h1>
 <p class="page-subtitle">Generate a share link for a recipient.</p>
-
-<?php if (!empty($_GET['revoked'])): ?>
-    <div class="banner banner-success">Share link revoked.</div>
-<?php endif ?>
 
 <?php if ($error): ?>
     <div class="banner banner-error"><?= h($error) ?></div>

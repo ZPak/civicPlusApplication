@@ -24,6 +24,10 @@ function render_header(string $title, ?array $staff = null): void {
 </nav>
 <main class="container">
     <?php
+    $flash = get_flash();
+    if ($flash): ?>
+        <div class="banner banner-<?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>
+    <?php endif;
 }
 
 function render_footer(): void {
