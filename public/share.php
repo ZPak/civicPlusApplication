@@ -22,24 +22,38 @@ if (!$doc) {
 
 $error = null;
 $created_token = null;
+$created_slug = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     if ($email === '') {
         $error = 'Recipient email is required.';
     } else {
+        $slug = null;
+        for ($i = 0; $i < 10; $i++) {
+            $candidate = generate_slug($doc['title']);
+            $check = db()->prepare('SELECT id FROM shares WHERE slug = ?');
+            $check->execute([$candidate]);
+            if (!$check->fetch()) {
+                $slug = $candidate;
+                break;
+            }
+        }
+
         $token = random_token();
         $stmt = db()->prepare('
-            INSERT INTO shares (document_id, token, recipient_email)
-            VALUES (?, ?, ?)
+            INSERT INTO shares (document_id, token, recipient_email, slug)
+            VALUES (?, ?, ?, ?)
         ');
-        $stmt->execute([$doc['id'], $token, $email]);
+        $stmt->execute([$doc['id'], $token, $email, $slug]);
         $shareId = (int) db()->lastInsertId();
         audit_log('create', 'share', $shareId, [
             'document_id' => $doc['id'],
             'recipient_email' => $email,
+            'slug' => $slug,
         ]);
         $created_token = $token;
+        $created_slug = $slug;
     }
 }
 
@@ -49,7 +63,7 @@ render_header('Share · ' . $doc['title'], $staff);
 <a href="/admin.php" class="back-link">← back to admin</a>
 
 <h1 class="page-title">Share "<?= h($doc['title']) ?>"</h1>
-<p class="page-subtitle">Generate a one-time link for a recipient.</p>
+<p class="page-subtitle">Generate a share link for a recipient.</p>
 
 <?php if ($error): ?>
     <div class="banner banner-error"><?= h($error) ?></div>
@@ -57,8 +71,15 @@ render_header('Share · ' . $doc['title'], $staff);
 
 <?php if ($created_token): ?>
     <div class="banner banner-success">
-        Share link ready:
-        <code>http://<?= h($_SERVER['HTTP_HOST']) ?>/view.php?token=<?= h($created_token) ?></code>
+        <?php if ($created_slug): ?>
+            <strong>Token link</strong> (private, always works):<br>
+            <code>http://<?= h($_SERVER['HTTP_HOST']) ?>/view.php?token=<?= h($created_token) ?></code><br><br>
+            <strong>Readable link</strong> (optional — use in place of the token if a human-friendly URL is preferable):<br>
+            <code>http://<?= h($_SERVER['HTTP_HOST']) ?>/view.php?slug=<?= h($created_slug) ?></code>
+        <?php else: ?>
+            <strong>Token link</strong> (private, always works):<br>
+            <code>http://<?= h($_SERVER['HTTP_HOST']) ?>/view.php?token=<?= h($created_token) ?></code>
+        <?php endif ?>
     </div>
 <?php endif ?>
 

@@ -43,6 +43,20 @@ function random_token(int $bytes = 16): string {
     return bin2hex(random_bytes($bytes));
 }
 
+function generate_slug(string $title): string {
+    $base = strtolower(trim($title));
+    $base = preg_replace('/[^a-z0-9]+/', '-', $base);
+    $base = trim($base, '-');
+    $base = rtrim(substr($base, 0, 30), '-');
+
+    $chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+    $suffix = '';
+    for ($i = 0; $i < 4; $i++) {
+        $suffix .= $chars[random_int(0, strlen($chars) - 1)];
+    }
+    return $base . '-' . $suffix;
+}
+
 function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }

@@ -10,7 +10,7 @@ No auth beyond the hardcoded staff row (`id=1`).
 
 ## Stack
 
-- PHP 8.3, no framework, no Composer
+- PHP 8.3, no framework, no Composer (no composer.json exists — adding it is possible but out of scope)
 - SQLite via PDO (`db.sqlite` in project root)
 - Plain HTML + CSS, no JS build step
 - Docker (PHP built-in server on port 8000)
@@ -101,7 +101,7 @@ This keeps `docker compose up` working from a fresh clone: seed.php always rebui
 
 ## Test pattern
 
-At least one test must be added every time a new feature is built out. If possible, add multiple tests to try and cover a wide variety of use cases and edge cases.
+At least one test must be added every time a new feature is built out. If possible, add multiple tests to try and cover a wide variety of use cases and edge cases. Ensure that tests are unit tests and avoid sharing contexts with another test.
 
 Add tests to `tests/test.php` using the `test()` / `assert_true()` helpers already defined there:
 ```php

@@ -47,11 +47,15 @@ test('seeded share link resolves to the seeded document', function () {
 // --- Scheduled publishing ---
 
 test('document with null publish_at is immediately available', function () {
-    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = 1');
-    $stmt->execute();
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Immediate Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
     $row = $stmt->fetch();
-    assert_true($row !== false, 'expected seeded document');
-    assert_true($row['publish_at'] === null, 'seeded document should have no publish_at');
+    assert_true($row !== false, 'expected inserted document');
+    assert_true($row['publish_at'] === null, 'publish_at should be null when not set');
 });
 
 test('document with future publish_at is not yet available via share token', function () {
@@ -165,8 +169,12 @@ test('document with past publish_at is not editable', function () {
 });
 
 test('document with null publish_at is not editable (immediately live)', function () {
-    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = 1');
-    $stmt->execute();
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Immediate Live Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
     $row = $stmt->fetch();
     $is_editable = $row['publish_at'] !== null && $row['publish_at'] > date('Y-m-d H:i:s');
     assert_true(!$is_editable, 'immediately live document should not be editable');
@@ -175,14 +183,18 @@ test('document with null publish_at is not editable (immediately live)', functio
 // --- Document editing ---
 
 test('editing a document persists updated fields', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Original Title', 'Original body.']);
+    $docId = (int) db()->lastInsertId();
+
     $stmt = db()->prepare('
         UPDATE documents SET title = ?, body = ?, publish_at = ?, show_publish_date = ?
-        WHERE id = 1
+        WHERE id = ?
     ');
-    $stmt->execute(['Updated Title', 'Updated body.', '2099-06-01 09:00:00', 0]);
+    $stmt->execute(['Updated Title', 'Updated body.', '2099-06-01 09:00:00', 0, $docId]);
 
-    $stmt = db()->prepare('SELECT * FROM documents WHERE id = 1');
-    $stmt->execute();
+    $stmt = db()->prepare('SELECT * FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
     $row = $stmt->fetch();
     assert_true($row['title'] === 'Updated Title', 'title should be updated');
     assert_true($row['body'] === 'Updated body.', 'body should be updated');
@@ -207,6 +219,54 @@ test('editing a document is recorded in audit_log', function () {
     assert_true($row !== false, 'expected an update audit log entry');
     $details = json_decode($row['details'], true);
     assert_true($details['title'] === 'Audit Test', 'audit log details should include title');
+});
+
+// --- Human-readable slugs ---
+
+test('generate_slug produces a non-empty string with a hyphenated suffix', function () {
+    $slug = generate_slug('Welcome Packet');
+    assert_true($slug !== '', 'slug should not be empty');
+    assert_true((bool) preg_match('/^[a-z0-9-]+-[a-z0-9]{4}$/', $slug), 'slug should match pattern: ' . $slug);
+});
+
+test('generate_slug handles special characters and extra whitespace', function () {
+    $slug = generate_slug('  Hello, World! (2026) ');
+    assert_true((bool) preg_match('/^[a-z0-9-]+-[a-z0-9]{4}$/', $slug), 'slug should only contain lowercase alphanumerics and hyphens: ' . $slug);
+});
+
+test('share created with a slug resolves via ?slug= parameter', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Slug Test Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $slug = generate_slug('Slug Test Doc');
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email, slug) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$docId, $token, 'slug-test@example.com', $slug]);
+
+    $stmt = db()->prepare('
+        SELECT d.title
+        FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.slug = ?
+    ');
+    $stmt->execute([$slug]);
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'slug should resolve to a document');
+    assert_true($row['title'] === 'Slug Test Doc', 'resolved wrong document: ' . var_export($row['title'], true));
+});
+
+test('slug column has a unique constraint', function () {
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email, slug) VALUES (1, ?, ?, ?)');
+    $stmt->execute([random_token(), 'a@example.com', 'unique-slug-test-0001']);
+
+    $threw = false;
+    try {
+        $stmt->execute([random_token(), 'b@example.com', 'unique-slug-test-0001']);
+    } catch (PDOException $e) {
+        $threw = true;
+    }
+    assert_true($threw, 'inserting duplicate slug should throw');
 });
 
 echo "\n{$pass} passed, {$fail} failed.\n";

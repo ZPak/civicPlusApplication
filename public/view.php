@@ -3,15 +3,26 @@
 require __DIR__ . '/../lib/bootstrap.php';
 require __DIR__ . '/../lib/layout.php';
 
+$slug  = $_GET['slug']  ?? '';
 $token = $_GET['token'] ?? '';
 
-$stmt = db()->prepare('
-    SELECT d.*, s.recipient_email
-    FROM shares s
-    JOIN documents d ON d.id = s.document_id
-    WHERE s.token = ?
-');
-$stmt->execute([$token]);
+if ($slug !== '') {
+    $stmt = db()->prepare('
+        SELECT d.*, s.recipient_email
+        FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.slug = ?
+    ');
+    $stmt->execute([$slug]);
+} else {
+    $stmt = db()->prepare('
+        SELECT d.*, s.recipient_email
+        FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.token = ?
+    ');
+    $stmt->execute([$token]);
+}
 $doc = $stmt->fetch();
 
 if (!$doc) {

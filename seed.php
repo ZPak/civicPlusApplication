@@ -11,6 +11,7 @@ $pdo = db();
 $pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
 $pdo->exec(file_get_contents(__DIR__ . '/migrations/001_add_publish_at.sql'));
 $pdo->exec(file_get_contents(__DIR__ . '/migrations/002_add_show_publish_date.sql'));
+$pdo->exec(file_get_contents(__DIR__ . '/migrations/003_add_slug_to_shares.sql'));
 
 $pdo->exec("
     INSERT INTO staff (email, name) VALUES
