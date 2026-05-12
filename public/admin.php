@@ -24,19 +24,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$title, $body, $staff['id'], $publish_at, $show_publish_date]);
         } catch (PDOException $e) {
             if (str_contains($e->getMessage(), 'UNIQUE constraint failed: documents.title')) {
-                $error = 'A document with that title already exists.';
+                flash('A document with that title already exists.', 'error');
+                header('Location: /admin.php');
+                exit;
             } else {
                 throw $e;
             }
         }
 
-        if (!$error) {
-            $docId = (int) db()->lastInsertId();
-            audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at, 'show_publish_date' => $show_publish_date]);
-            flash('Document #' . $docId . ' created.');
-            header('Location: /admin.php');
-            exit;
-        }
+        $docId = (int) db()->lastInsertId();
+        audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at, 'show_publish_date' => $show_publish_date]);
+        flash('Document #' . $docId . ' created.');
+        header('Location: /admin.php');
+        exit;
     }
 }
 
