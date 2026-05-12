@@ -24,13 +24,34 @@ $error = null;
 $created_token = null;
 $created_slug = null;
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'revoke') {
+    $shareId = (int) ($_POST['share_id'] ?? 0);
+    $stmt = db()->prepare('SELECT * FROM shares WHERE id = ? AND document_id = ?');
+    $stmt->execute([$shareId, $doc['id']]);
+    $share = $stmt->fetch();
+    if ($share) {
+        db()->prepare('DELETE FROM shares WHERE id = ?')->execute([$shareId]);
+        audit_log('revoke', 'share', $shareId, [
+            'document_id' => $doc['id'],
+            'recipient_email' => $share['recipient_email'],
+        ]);
+    }
+    header('Location: /share.php?doc=' . $doc['id'] . '&revoked=1');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $slug_input = trim($_POST['slug'] ?? '');
     $slug = $slug_input !== '' ? $slug_input : null;
 
+    $existing = db()->prepare('SELECT id FROM shares WHERE document_id = ? AND recipient_email = ?');
+    $existing->execute([$doc['id'], $email]);
+
     if ($email === '') {
         $error = 'Recipient email is required.';
+    } elseif ($existing->fetch()) {
+        $error = 'A share link already exists for this recipient. Revoke the existing link before creating a new one.';
     } elseif ($slug !== null && !preg_match('/^[a-z0-9][a-z0-9-]*[a-z0-9]$/', $slug)) {
         $error = 'Slug must contain only lowercase letters, numbers, and hyphens, and must not start or end with a hyphen.';
     } elseif ($slug !== null && strlen($slug) < SLUG_MIN_LENGTH) {
@@ -46,6 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (PDOException $e) {
             if (str_contains($e->getMessage(), 'UNIQUE constraint failed: shares.slug')) {
                 $error = 'That slug is already in use. Please choose a different one.';
+            } elseif (str_contains($e->getMessage(), 'idx_shares_document_recipient')) {
+                $error = 'A share link already exists for this recipient. Revoke the existing link before creating a new one.';
             } else {
                 throw $e;
             }
@@ -64,6 +87,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$stmt = db()->prepare('SELECT * FROM shares WHERE document_id = ? ORDER BY created_at DESC');
+$stmt->execute([$doc['id']]);
+$shares = $stmt->fetchAll();
+
 render_header('Share · ' . $doc['title'], $staff);
 ?>
 
@@ -71,6 +98,10 @@ render_header('Share · ' . $doc['title'], $staff);
 
 <h1 class="page-title">Share "<?= h($doc['title']) ?>"</h1>
 <p class="page-subtitle">Generate a share link for a recipient.</p>
+
+<?php if (!empty($_GET['revoked'])): ?>
+    <div class="banner banner-success">Share link revoked.</div>
+<?php endif ?>
 
 <?php if ($error): ?>
     <div class="banner banner-error"><?= h($error) ?></div>
@@ -105,5 +136,37 @@ render_header('Share · ' . $doc['title'], $staff);
         <button type="submit" class="btn">Generate link</button>
     </form>
 </section>
+
+<?php if (!empty($shares)): ?>
+<section class="card">
+    <h2 class="card-title">Active share links</h2>
+    <table class="data">
+        <thead>
+            <tr>
+                <th>Recipient</th>
+                <th>Slug</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($shares as $s): ?>
+                <tr>
+                    <td><?= h($s['recipient_email']) ?></td>
+                    <td><?= $s['slug'] ? h($s['slug']) : '<em>none</em>' ?></td>
+                    <td><?= h($s['created_at']) ?></td>
+                    <td>
+                        <form method="post" onsubmit="return confirm('Revoke this share link? The recipient will no longer be able to access the document.')">
+                            <input type="hidden" name="action" value="revoke">
+                            <input type="hidden" name="share_id" value="<?= (int) $s['id'] ?>">
+                            <button type="submit" class="btn-link">Revoke</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach ?>
+        </tbody>
+    </table>
+</section>
+<?php endif ?>
 
 <?php render_footer(); ?>

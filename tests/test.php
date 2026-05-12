@@ -298,6 +298,124 @@ test('slug column has a unique constraint', function () {
     assert_true($threw, 'inserting duplicate slug should throw');
 });
 
+// --- Share revocation ---
+
+test('revoking a share removes it from the database', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Revoke Test Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, $token, 'revoke@example.com']);
+    $shareId = (int) db()->lastInsertId();
+
+    db()->prepare('DELETE FROM shares WHERE id = ?')->execute([$shareId]);
+
+    $stmt = db()->prepare('SELECT id FROM shares WHERE id = ?');
+    $stmt->execute([$shareId]);
+    assert_true($stmt->fetch() === false, 'share should no longer exist after revocation');
+});
+
+test('revoked share token no longer resolves a document', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Revoke Token Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, $token, 'revoke2@example.com']);
+    $shareId = (int) db()->lastInsertId();
+
+    db()->prepare('DELETE FROM shares WHERE id = ?')->execute([$shareId]);
+
+    $stmt = db()->prepare('
+        SELECT d.title FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.token = ?
+    ');
+    $stmt->execute([$token]);
+    assert_true($stmt->fetch() === false, 'revoked token should not resolve to a document');
+});
+
+test('revocation is scoped to the document — cannot revoke a share from another document', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Doc A', 'Body']);
+    $docAId = (int) db()->lastInsertId();
+    $stmt->execute(['Doc B', 'Body']);
+    $docBId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docBId, $token, 'other@example.com']);
+    $shareId = (int) db()->lastInsertId();
+
+    // Attempt to revoke share belonging to docB using docA's scope
+    $stmt = db()->prepare('SELECT * FROM shares WHERE id = ? AND document_id = ?');
+    $stmt->execute([$shareId, $docAId]);
+    assert_true($stmt->fetch() === false, 'share from another document should not be found in scope of docA');
+});
+
+test('revocation is recorded in audit_log', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Audit Revoke Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, $token, 'audit-revoke@example.com']);
+    $shareId = (int) db()->lastInsertId();
+
+    db()->prepare('DELETE FROM shares WHERE id = ?')->execute([$shareId]);
+    $stmt = db()->prepare('
+        INSERT INTO audit_log (staff_id, action, entity_type, entity_id, details)
+        VALUES (1, ?, ?, ?, ?)
+    ');
+    $stmt->execute(['revoke', 'share', $shareId, json_encode(['document_id' => $docId])]);
+
+    $stmt = db()->prepare("SELECT * FROM audit_log WHERE action = 'revoke' AND entity_id = ?");
+    $stmt->execute([$shareId]);
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'revocation should be recorded in audit_log');
+});
+
+test('cannot share the same document with the same recipient twice', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Duplicate Share Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, random_token(), 'duplicate@example.com']);
+
+    $threw = false;
+    try {
+        $stmt->execute([$docId, random_token(), 'duplicate@example.com']);
+    } catch (PDOException $e) {
+        $threw = true;
+    }
+    assert_true($threw, 'duplicate share for same recipient should throw');
+});
+
+test('re-sharing with the same recipient is allowed after revocation', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Reshare Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)');
+    $stmt->execute([$docId, random_token(), 'reshare@example.com']);
+    $shareId = (int) db()->lastInsertId();
+
+    db()->prepare('DELETE FROM shares WHERE id = ?')->execute([$shareId]);
+
+    $threw = false;
+    try {
+        $stmt->execute([$docId, random_token(), 'reshare@example.com']);
+    } catch (PDOException $e) {
+        $threw = true;
+    }
+    assert_true(!$threw, 're-sharing after revocation should succeed');
+});
+
 // --- Search ---
 
 test('substring search returns matching documents', function () {

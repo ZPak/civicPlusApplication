@@ -52,6 +52,7 @@ if (!$doc) {
 }
 
 if ($doc['publish_at'] !== null && $doc['publish_at'] > date('Y-m-d H:i:s')) {
+    http_response_code(403);
     render_header('Not yet available');
     ?>
     <div class="centered-message">
