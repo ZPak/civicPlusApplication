@@ -47,6 +47,10 @@ render_header('Admin', $staff);
     <div class="banner banner-success">Document #<?= (int) $_GET['created'] ?> created.</div>
 <?php endif ?>
 
+<?php if (!empty($_GET['updated'])): ?>
+    <div class="banner banner-success">Document #<?= (int) $_GET['updated'] ?> updated.</div>
+<?php endif ?>
+
 <?php if ($error): ?>
     <div class="banner banner-error"><?= h($error) ?></div>
 <?php endif ?>
@@ -100,7 +104,12 @@ render_header('Admin', $staff);
                         <td><?= h($d['creator_name']) ?></td>
                         <td><?= h($d['created_at']) ?></td>
                         <td><?= $d['publish_at'] ? h($d['publish_at']) : '<em>immediately</em>' ?></td>
-                        <td><a href="/share.php?doc=<?= (int) $d['id'] ?>" class="btn-link">Create share →</a></td>
+                        <td>
+                            <?php if ($d['publish_at'] && $d['publish_at'] > date('Y-m-d H:i:s')): ?>
+                                <a href="/edit.php?doc=<?= (int) $d['id'] ?>" class="btn-link">Edit →</a>
+                            <?php endif ?>
+                            <a href="/share.php?doc=<?= (int) $d['id'] ?>" class="btn-link">Create share →</a>
+                        </td>
                     </tr>
                 <?php endforeach ?>
             </tbody>

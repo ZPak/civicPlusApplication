@@ -132,5 +132,82 @@ test('show_publish_date can be set to 0 to hide the date', function () {
     assert_true((int) $row['show_publish_date'] === 0, 'show_publish_date should be 0');
 });
 
+// --- Edit guard ---
+
+test('document with future publish_at is editable', function () {
+    $stmt = db()->prepare('
+        INSERT INTO documents (title, body, created_by, publish_at)
+        VALUES (?, ?, 1, ?)
+    ');
+    $stmt->execute(['Editable Doc', 'Body', '2099-01-01 00:00:00']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
+    $row = $stmt->fetch();
+    $is_editable = $row['publish_at'] !== null && $row['publish_at'] > date('Y-m-d H:i:s');
+    assert_true($is_editable, 'document with future publish_at should be editable');
+});
+
+test('document with past publish_at is not editable', function () {
+    $stmt = db()->prepare('
+        INSERT INTO documents (title, body, created_by, publish_at)
+        VALUES (?, ?, 1, ?)
+    ');
+    $stmt->execute(['Live Doc', 'Body', '2020-01-01 00:00:00']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
+    $row = $stmt->fetch();
+    $is_editable = $row['publish_at'] !== null && $row['publish_at'] > date('Y-m-d H:i:s');
+    assert_true(!$is_editable, 'document with past publish_at should not be editable');
+});
+
+test('document with null publish_at is not editable (immediately live)', function () {
+    $stmt = db()->prepare('SELECT publish_at FROM documents WHERE id = 1');
+    $stmt->execute();
+    $row = $stmt->fetch();
+    $is_editable = $row['publish_at'] !== null && $row['publish_at'] > date('Y-m-d H:i:s');
+    assert_true(!$is_editable, 'immediately live document should not be editable');
+});
+
+// --- Document editing ---
+
+test('editing a document persists updated fields', function () {
+    $stmt = db()->prepare('
+        UPDATE documents SET title = ?, body = ?, publish_at = ?, show_publish_date = ?
+        WHERE id = 1
+    ');
+    $stmt->execute(['Updated Title', 'Updated body.', '2099-06-01 09:00:00', 0]);
+
+    $stmt = db()->prepare('SELECT * FROM documents WHERE id = 1');
+    $stmt->execute();
+    $row = $stmt->fetch();
+    assert_true($row['title'] === 'Updated Title', 'title should be updated');
+    assert_true($row['body'] === 'Updated body.', 'body should be updated');
+    assert_true($row['publish_at'] === '2099-06-01 09:00:00', 'publish_at should be updated');
+    assert_true((int) $row['show_publish_date'] === 0, 'show_publish_date should be updated');
+});
+
+test('editing a document is recorded in audit_log', function () {
+    $stmt = db()->prepare('
+        INSERT INTO audit_log (staff_id, action, entity_type, entity_id, details)
+        VALUES (1, ?, ?, ?, ?)
+    ');
+    $stmt->execute(['update', 'document', 1, json_encode(['title' => 'Audit Test'])]);
+
+    $stmt = db()->prepare("
+        SELECT * FROM audit_log
+        WHERE action = 'update' AND entity_type = 'document' AND entity_id = 1
+        ORDER BY id DESC LIMIT 1
+    ");
+    $stmt->execute();
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'expected an update audit log entry');
+    $details = json_decode($row['details'], true);
+    assert_true($details['title'] === 'Audit Test', 'audit log details should include title');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);
