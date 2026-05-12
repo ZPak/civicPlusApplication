@@ -50,16 +50,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             UPDATE documents SET title = ?, body = ?, publish_at = ?, show_publish_date = ?
             WHERE id = ?
         ');
-        $stmt->execute([$title, $body, $publish_at, $show_publish_date, $doc['id']]);
+        try {
+            $stmt->execute([$title, $body, $publish_at, $show_publish_date, $doc['id']]);
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'UNIQUE constraint failed: documents.title')) {
+                $error = 'A document with that title already exists.';
+            } else {
+                throw $e;
+            }
+        }
 
-        audit_log('update', 'document', $doc['id'], [
-            'title' => $title,
-            'publish_at' => $publish_at,
-            'show_publish_date' => $show_publish_date,
-        ]);
-
-        header('Location: /admin.php?updated=' . $doc['id']);
-        exit;
+        if (!$error) {
+            audit_log('update', 'document', $doc['id'], [
+                'title' => $title,
+                'publish_at' => $publish_at,
+                'show_publish_date' => $show_publish_date,
+            ]);
+            header('Location: /admin.php?updated=' . $doc['id']);
+            exit;
+        }
     }
 }
 

@@ -298,6 +298,36 @@ test('slug column has a unique constraint', function () {
     assert_true($threw, 'inserting duplicate slug should throw');
 });
 
+// --- Unique document title ---
+
+test('cannot create two documents with the same title', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Unique Title Test', 'Body']);
+
+    $threw = false;
+    try {
+        $stmt->execute(['Unique Title Test', 'Body']);
+    } catch (PDOException $e) {
+        $threw = true;
+    }
+    assert_true($threw, 'inserting a duplicate title should throw');
+});
+
+test('updating a document to its own title does not throw', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Self Title Update', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $threw = false;
+    try {
+        $stmt = db()->prepare('UPDATE documents SET title = ? WHERE id = ?');
+        $stmt->execute(['Self Title Update', $docId]);
+    } catch (PDOException $e) {
+        $threw = true;
+    }
+    assert_true(!$threw, 'updating to the same title should not throw');
+});
+
 // --- Share revocation ---
 
 test('revoking a share removes it from the database', function () {

@@ -20,13 +20,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             INSERT INTO documents (title, body, created_by, publish_at, show_publish_date)
             VALUES (?, ?, ?, ?, ?)
         ');
-        $stmt->execute([$title, $body, $staff['id'], $publish_at, $show_publish_date]);
-        $docId = (int) db()->lastInsertId();
+        try {
+            $stmt->execute([$title, $body, $staff['id'], $publish_at, $show_publish_date]);
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'UNIQUE constraint failed: documents.title')) {
+                $error = 'A document with that title already exists.';
+            } else {
+                throw $e;
+            }
+        }
 
-        audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at, 'show_publish_date' => $show_publish_date]);
-
-        header('Location: /admin.php?created=' . $docId);
-        exit;
+        if (!$error) {
+            $docId = (int) db()->lastInsertId();
+            audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at, 'show_publish_date' => $show_publish_date]);
+            header('Location: /admin.php?created=' . $docId);
+            exit;
+        }
     }
 }
 
