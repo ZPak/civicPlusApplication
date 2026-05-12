@@ -225,30 +225,43 @@ test('editing a document is recorded in audit_log', function () {
 
 // --- Human-readable slugs ---
 
-test('generate_slug produces a non-empty string with a hyphenated suffix', function () {
-    $slug = generate_slug('Welcome Packet');
-    assert_true($slug !== '', 'slug should not be empty');
-    assert_true((bool) preg_match('/^[a-z0-9][a-z0-9-]+-[a-z0-9]{4,}$/', $slug), 'slug should match pattern: ' . $slug);
-    assert_true(strlen($slug) >= SLUG_MIN_LENGTH, 'slug should meet minimum length: ' . $slug);
-});
-
-test('generate_slug meets minimum length even for short titles', function () {
-    $slug = generate_slug('AI');
-    assert_true(strlen($slug) >= SLUG_MIN_LENGTH, 'short title slug should still meet minimum length: ' . $slug);
-});
-
-test('generate_slug handles special characters and extra whitespace', function () {
-    $slug = generate_slug('  Hello, World! (2026) ');
-    assert_true((bool) preg_match('/^[a-z0-9][a-z0-9-]+-[a-z0-9]{4,}$/', $slug), 'slug should only contain lowercase alphanumerics and hyphens: ' . $slug);
-    assert_true(strlen($slug) >= SLUG_MIN_LENGTH, 'slug should meet minimum length: ' . $slug);
-});
-
-test('share created with a slug resolves via ?slug= parameter', function () {
+test('custom slug is stored when provided', function () {
     $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
     $stmt->execute(['Slug Test Doc', 'Body']);
     $docId = (int) db()->lastInsertId();
 
-    $slug = generate_slug('Slug Test Doc');
+    $slug = 'slug-test-doc-2026';
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email, slug) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$docId, $token, 'slug-test@example.com', $slug]);
+
+    $stmt = db()->prepare('SELECT slug FROM shares WHERE token = ?');
+    $stmt->execute([$token]);
+    $row = $stmt->fetch();
+    assert_true($row['slug'] === $slug, 'stored slug should match input: ' . var_export($row['slug'], true));
+});
+
+test('null slug is stored when no slug is provided', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['No Slug Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $token = random_token();
+    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email, slug) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$docId, $token, 'no-slug@example.com', null]);
+
+    $stmt = db()->prepare('SELECT slug FROM shares WHERE token = ?');
+    $stmt->execute([$token]);
+    $row = $stmt->fetch();
+    assert_true($row['slug'] === null, 'slug should be null when not provided');
+});
+
+test('share created with a slug resolves via ?slug= parameter', function () {
+    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
+    $stmt->execute(['Slug Resolve Doc', 'Body']);
+    $docId = (int) db()->lastInsertId();
+
+    $slug = 'slug-resolve-doc-2026';
     $token = random_token();
     $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email, slug) VALUES (?, ?, ?, ?)');
     $stmt->execute([$docId, $token, 'slug-test@example.com', $slug]);
@@ -262,23 +275,13 @@ test('share created with a slug resolves via ?slug= parameter', function () {
     $stmt->execute([$slug]);
     $row = $stmt->fetch();
     assert_true($row !== false, 'slug should resolve to a document');
-    assert_true($row['title'] === 'Slug Test Doc', 'resolved wrong document: ' . var_export($row['title'], true));
+    assert_true($row['title'] === 'Slug Resolve Doc', 'resolved wrong document: ' . var_export($row['title'], true));
 });
 
 test('providing both slug and token parameters is rejected', function () {
-    $stmt = db()->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)');
-    $stmt->execute(['Both Params Doc', 'Body']);
-    $docId = (int) db()->lastInsertId();
-
-    $slug = generate_slug('Both Params Doc');
+    $slug  = 'both-params-test-2026';
     $token = random_token();
-    $stmt = db()->prepare('INSERT INTO shares (document_id, token, recipient_email, slug) VALUES (?, ?, ?, ?)');
-    $stmt->execute([$docId, $token, 'both@example.com', $slug]);
-
-    // Simulate the guard logic from view.php
     $both_provided = $slug !== '' && $token !== '';
-    assert_true($both_provided === true, 'both slug and token are non-empty');
-    // Guard should reject — confirmed by the condition being true
     assert_true($both_provided, 'request with both params should be flagged for rejection');
 });
 

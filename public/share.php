@@ -26,34 +26,41 @@ $created_slug = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
+    $slug_input = trim($_POST['slug'] ?? '');
+    $slug = $slug_input !== '' ? $slug_input : null;
+
     if ($email === '') {
         $error = 'Recipient email is required.';
+    } elseif ($slug !== null && !preg_match('/^[a-z0-9][a-z0-9-]*[a-z0-9]$/', $slug)) {
+        $error = 'Slug must contain only lowercase letters, numbers, and hyphens, and must not start or end with a hyphen.';
+    } elseif ($slug !== null && strlen($slug) < SLUG_MIN_LENGTH) {
+        $error = 'Slug must be at least ' . SLUG_MIN_LENGTH . ' characters.';
     } else {
-        $slug = null;
-        for ($i = 0; $i < 10; $i++) {
-            $candidate = generate_slug($doc['title']);
-            $check = db()->prepare('SELECT id FROM shares WHERE slug = ?');
-            $check->execute([$candidate]);
-            if (!$check->fetch()) {
-                $slug = $candidate;
-                break;
-            }
-        }
-
         $token = random_token();
         $stmt = db()->prepare('
             INSERT INTO shares (document_id, token, recipient_email, slug)
             VALUES (?, ?, ?, ?)
         ');
-        $stmt->execute([$doc['id'], $token, $email, $slug]);
-        $shareId = (int) db()->lastInsertId();
-        audit_log('create', 'share', $shareId, [
-            'document_id' => $doc['id'],
-            'recipient_email' => $email,
-            'slug' => $slug,
-        ]);
-        $created_token = $token;
-        $created_slug = $slug;
+        try {
+            $stmt->execute([$doc['id'], $token, $email, $slug]);
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'UNIQUE constraint failed: shares.slug')) {
+                $error = 'That slug is already in use. Please choose a different one.';
+            } else {
+                throw $e;
+            }
+        }
+
+        if (!$error) {
+            $shareId = (int) db()->lastInsertId();
+            audit_log('create', 'share', $shareId, [
+                'document_id' => $doc['id'],
+                'recipient_email' => $email,
+                'slug' => $slug,
+            ]);
+            $created_token = $token;
+            $created_slug = $slug;
+        }
     }
 }
 
@@ -89,6 +96,11 @@ render_header('Share · ' . $doc['title'], $staff);
         <div class="form-field">
             <label for="email">Recipient email</label>
             <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-field">
+            <label for="slug">Readable slug (optional)</label>
+            <input type="text" id="slug" name="slug" value="<?= isset($slug_input) ? h($slug_input) : '' ?>" placeholder="e.g. welcome-packet-2026">
+            <small>Lowercase letters, numbers, and hyphens only. Minimum <?= SLUG_MIN_LENGTH ?> characters. If omitted, only the token link is generated.</small>
         </div>
         <button type="submit" class="btn">Generate link</button>
     </form>
