@@ -42,15 +42,37 @@ Customers have asked for three things. Pick an order, scope as you see fit, and 
 
 Staff should be able to prepare a document in advance and have it become visible to recipients at a specific date and time. Before that time, someone hitting the share link should see a "not yet available" message instead of the document.
 
+**Design decisions:**
+- A nullable `publish_at` (TEXT, ISO 8601) column was added to `documents` via migration. `NULL` means immediately available; a future datetime gates access.
+- A `show_publish_date` boolean column (default 1) controls whether the scheduled date is shown to recipients in the "not yet available" message. Hiding it is an explicit staff opt-out.
+- The availability check runs in PHP (`$doc['publish_at'] > date('Y-m-d H:i:s')`) using the app's configured timezone (`America/Chicago`), keeping datetime handling consistent rather than mixing PHP and SQLite `datetime('now')`.
+- Unavailable documents return HTTP 403.
+- **Document editing** was added as an extension: staff can edit title, body, and schedule while a document is not yet live. Once live (`publish_at` is past or null), the document is locked and the Edit link is hidden.
+
 ### 2. Human-readable document IDs
 
 Today documents are identified by auto-increment integers (`#1`, `#2`) and share links use opaque hex tokens. Customers want each document to have a **short, readable ID** — something a person could say out loud, type into a URL, or paste into an email. Examples of the shape (not prescriptive): `welcome-2026`, `onboarding-packet-3k`, `FOLIO-7QX4`.
 
 The exact format, length, and URL structure are your call. Think about collisions, guessability, and how this interacts with the existing share-token mechanism.
 
+**Design decisions:**
+- The slug lives on the `shares` table, not `documents`. Each share gets its own slug, which means different recipients can have different readable links, and revoking one share doesn't affect others.
+- Slugs are **optional and staff-entered** rather than auto-generated. Leaving the field blank stores `NULL` and produces a token-only link. This makes the guessability tradeoff explicit: staff who use a slug accept that it is more guessable than the opaque token.
+- The opaque token remains the primary share mechanism and always works. The slug is an alternative, not a replacement.
+- Slugs must be lowercase alphanumeric with hyphens, minimum 8 characters, and globally unique. A partial unique index (`WHERE slug IS NOT NULL`) allows multiple null slugs without conflict.
+- `view.php` accepts `?slug=` or `?token=` but not both — providing both returns HTTP 400 to avoid ambiguity.
+- **Share revocation** was added: staff can revoke any active share link from the share page. The token and slug immediately stop resolving. A unique index on `(document_id, recipient_email)` also prevents sharing the same document with the same recipient twice; re-sharing is allowed after revocation.
+
 ### 3. Share by name
 
 Staff should be able to find a document to share by searching for it by title, not just by scrolling a list. Decide what "search" means here — exact match, prefix, fuzzy, something else — and justify your choice.
+
+**Design decisions:**
+- Search uses `LIKE '%query%'` (substring match). This covers the stated use case of knowing part of a title, including the middle. It is case-insensitive for ASCII in SQLite without extra configuration.
+- Results are sorted alphabetically ascending, which is more useful for name-based navigation than the default `created_at DESC`.
+- Pagination is set to 10 documents per page using `LIMIT`/`OFFSET`. The search query is preserved in pagination links.
+- `LIKE '%query%'` with a leading wildcard cannot use a title index and performs a full table scan. For an internal tool with a small document set this is acceptable; at scale, SQLite FTS5 virtual tables would be the right solution.
+- An empty query uses `LIKE '%%'` which matches all documents, so the same query path serves both the search and full list views without branching.
 
 ## What we're intentionally not specifying
 
