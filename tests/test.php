@@ -102,5 +102,35 @@ test('document with past publish_at is available via share token', function () {
     assert_true($row['publish_at'] <= date('Y-m-d H:i:s'), 'publish_at should be in the past');
 });
 
+// --- show_publish_date ---
+
+test('show_publish_date defaults to 1 for new documents', function () {
+    $stmt = db()->prepare('
+        INSERT INTO documents (title, body, created_by, publish_at)
+        VALUES (?, ?, 1, ?)
+    ');
+    $stmt->execute(['Default Visibility Doc', 'Body', '2099-01-01 00:00:00']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('SELECT show_publish_date FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
+    $row = $stmt->fetch();
+    assert_true((int) $row['show_publish_date'] === 1, 'show_publish_date should default to 1');
+});
+
+test('show_publish_date can be set to 0 to hide the date', function () {
+    $stmt = db()->prepare('
+        INSERT INTO documents (title, body, created_by, publish_at, show_publish_date)
+        VALUES (?, ?, 1, ?, 0)
+    ');
+    $stmt->execute(['Hidden Date Doc', 'Body', '2099-01-01 00:00:00']);
+    $docId = (int) db()->lastInsertId();
+
+    $stmt = db()->prepare('SELECT show_publish_date FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
+    $row = $stmt->fetch();
+    assert_true((int) $row['show_publish_date'] === 0, 'show_publish_date should be 0');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);

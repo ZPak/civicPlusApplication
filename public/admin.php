@@ -11,18 +11,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = trim($_POST['body'] ?? '');
     $publish_at_raw = trim($_POST['publish_at'] ?? '');
     $publish_at = $publish_at_raw !== '' ? date('Y-m-d H:i:s', strtotime($publish_at_raw)) : null;
+    $show_publish_date = isset($_POST['show_publish_date']) ? 1 : 0;
 
     if ($title === '' || $body === '') {
         $error = 'Title and body are required.';
     } else {
         $stmt = db()->prepare('
-            INSERT INTO documents (title, body, created_by, publish_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO documents (title, body, created_by, publish_at, show_publish_date)
+            VALUES (?, ?, ?, ?, ?)
         ');
-        $stmt->execute([$title, $body, $staff['id'], $publish_at]);
+        $stmt->execute([$title, $body, $staff['id'], $publish_at, $show_publish_date]);
         $docId = (int) db()->lastInsertId();
 
-        audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at]);
+        audit_log('create', 'document', $docId, ['title' => $title, 'publish_at' => $publish_at, 'show_publish_date' => $show_publish_date]);
 
         header('Location: /admin.php?created=' . $docId);
         exit;
@@ -64,6 +65,12 @@ render_header('Admin', $staff);
         <div class="form-field">
             <label for="publish_at">Publish at (optional — leave blank to publish immediately)</label>
             <input type="datetime-local" id="publish_at" name="publish_at">
+        </div>
+        <div class="form-field">
+            <label>
+                <input type="checkbox" name="show_publish_date" value="1" checked>
+                Show publish date to recipients before the document is live
+            </label>
         </div>
         <button type="submit" class="btn">Create document</button>
     </form>

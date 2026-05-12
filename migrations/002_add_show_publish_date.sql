@@ -1,0 +1,1 @@
+ALTER TABLE documents ADD COLUMN show_publish_date INTEGER NOT NULL DEFAULT 1;

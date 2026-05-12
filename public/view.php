@@ -32,7 +32,11 @@ if ($doc['publish_at'] !== null && $doc['publish_at'] > date('Y-m-d H:i:s')) {
     ?>
     <div class="centered-message">
         <h1>Not yet available</h1>
-        <p>This document will be available on <?= h($doc['publish_at']) ?>.</p>
+        <?php if ($doc['show_publish_date']): ?>
+            <p>This document will be available on <?= h($doc['publish_at']) ?>.</p>
+        <?php else: ?>
+            <p>This document is not yet available.</p>
+        <?php endif ?>
     </div>
     <?php
     render_footer();
