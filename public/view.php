@@ -6,6 +6,19 @@ require __DIR__ . '/../lib/layout.php';
 $slug  = $_GET['slug']  ?? '';
 $token = $_GET['token'] ?? '';
 
+if ($slug !== '' && $token !== '') {
+    http_response_code(400);
+    render_header('Bad request');
+    ?>
+    <div class="centered-message">
+        <h1>Bad request</h1>
+        <p>Provide either <code>slug</code> or <code>token</code>, not both.</p>
+    </div>
+    <?php
+    render_footer();
+    exit;
+}
+
 if ($slug !== '') {
     $stmt = db()->prepare('
         SELECT d.*, s.recipient_email
